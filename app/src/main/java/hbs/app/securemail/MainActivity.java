@@ -1,53 +1,53 @@
 package hbs.app.securemail;
 
 
+import android.accounts.AccountManager;
 import android.content.Context;
-import android.os.AsyncTask;
+import android.content.Intent;
 import android.os.Bundle;
-import android.os.Looper;
 import android.util.Log;
 import android.view.View;
-import android.widget.TextView;
+import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.api.client.extensions.android.http.AndroidHttp;
 import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential;
-import com.google.api.client.googleapis.extensions.android.gms.auth.GooglePlayServicesAvailabilityIOException;
 import com.google.api.client.googleapis.extensions.android.gms.auth.UserRecoverableAuthIOException;
-import com.google.api.client.googleapis.util.Utils;
 import com.google.api.client.http.HttpTransport;
 import com.google.api.client.json.JsonFactory;
 import com.google.api.client.json.jackson2.JacksonFactory;
-import com.google.api.client.util.Base64;
 import com.google.api.client.util.ExponentialBackOff;
 import com.google.api.services.gmail.Gmail;
 import com.google.api.services.gmail.GmailScopes;
+import com.google.api.services.gmail.model.Label;
+import com.google.api.services.gmail.model.ListLabelsResponse;
+import com.google.api.services.gmail.model.ListMessagesResponse;
 import com.google.api.services.gmail.model.Message;
+import com.google.api.services.gmail.model.MessagePart;
+import com.google.api.services.gmail.model.MessagePartHeader;
 
 import java.io.*;
 import java.security.*;
-import java.security.spec.*;
-import javax.crypto.*;
-import javax.mail.BodyPart;
-import javax.mail.MessagingException;
-import javax.mail.Multipart;
-import javax.mail.Session;
-import javax.mail.internet.InternetAddress;
-import javax.mail.internet.MimeBodyPart;
-import javax.mail.internet.MimeMessage;
-import javax.mail.internet.MimeMultipart;
-
-import java.nio.charset.*;
-import java.util.Arrays;
-import java.util.Properties;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
     // const
     private static final String HEADER = "===SECUREMAIL===";
+    private static final JsonFactory JSON_FACTORY = JacksonFactory.getDefaultInstance();
+    private static final List<String> SCOPES = new ArrayList<String>(){{
+        add(GmailScopes.GMAIL_LABELS);
+        add(GmailScopes.GMAIL_READONLY);
+    }};
 
     // variables
     private byte[] m_publickey;
     private byte[] m_privatekey;
+    private GoogleAccountCredential m_google_account_credential;
+    private RecyclerViewAdapterMessagesRow m_adapater;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -63,13 +63,13 @@ public class MainActivity extends AppCompatActivity {
         }
 
         // listen for button events
-        this.findViewById(R.id.button_send).setOnClickListener(new View.OnClickListener() {
+        this.findViewById(R.id.activitymain_button_send).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
                 MainActivity.this.onClickButtonSend();
             }
         });
-        this.findViewById(R.id.button_read).setOnClickListener(new View.OnClickListener() {
+        this.findViewById(R.id.activitymain_button_read).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
                 MainActivity.this.onClickButtonRead();
@@ -77,7 +77,25 @@ public class MainActivity extends AppCompatActivity {
         });
 
         // lets get started
+        this.m_google_account_credential = GoogleAccountCredential.usingOAuth2(
+                this.getApplicationContext(),
+                SCOPES)
+                .setBackOff(new ExponentialBackOff());
+        this.startActivityForResult(this.m_google_account_credential.newChooseAccountIntent(), 12345);
+    }
 
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        switch (requestCode){
+            case 12345:{
+                if (resultCode == RESULT_OK && data != null && data.getExtras() != null){
+                    String name = data.getStringExtra(AccountManager.KEY_ACCOUNT_NAME);
+                    this.m_google_account_credential.setSelectedAccountName(name);
+                }
+            } break;
+
+        }
     }
 
     private void onClickButtonSend(){
@@ -86,7 +104,21 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void onClickButtonRead(){
-        this.readUnreadMessages();
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    MainActivity.this.readMessages();
+                } catch (UserRecoverableAuthIOException ae){
+                    MainActivity.this.startActivityForResult(ae.getIntent(), 23456);
+                } catch (Exception e){
+                    log(e.toString());
+                    e.printStackTrace();
+                }
+
+            }
+        }).start();
+
     }
 
     private boolean generateKeys(){
@@ -127,194 +159,59 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-
     private void sendTestMessage(){
-        final String[] SCOPES = {
-                GmailScopes.GMAIL_LABELS,
-                GmailScopes.GMAIL_COMPOSE,
-                GmailScopes.GMAIL_INSERT,
-                GmailScopes.GMAIL_MODIFY,
-                GmailScopes.GMAIL_READONLY,
-                GmailScopes.MAIL_GOOGLE_COM
-        };
-        GoogleAccountCredential cred = GoogleAccountCredential.usingOAuth2(
-                getApplicationContext(), Arrays.asList(SCOPES))
-                .setBackOff(new ExponentialBackOff());
-        new MakeRequestTask(cred).execute();
-    }
-
-    private void readUnreadMessages() {
 
     }
 
+    private void readMessages() throws Exception{
+        HttpTransport http_transport = AndroidHttp.newCompatibleTransport(); //GoogleNetHttpTransport.newTrustedTransport();
+        Gmail service = new Gmail.Builder(
+                http_transport,
+                JSON_FACTORY,
+                this.m_google_account_credential)
+                .setApplicationName(this.getResources().getString(R.string.app_name))
+                .build();
 
+        String user = "me";
+        ListMessagesResponse messages_response = service.users().messages().list(user).execute();
 
-    String encodeMessageBody(String content) throws Exception{
-        return HEADER + "\n" + this.encryptText(content);
-    }
-
-    String decodeMessageBody(String content) throws Exception{
-        // make sure has header
-        if (content.substring(0, HEADER.length()).equals(HEADER)){
-            return this.decryptText(content.substring(HEADER.length()));
-        }
-        return "Not encrypted with SECUREMAIL";//: " + content;
-    }
-
-    String encryptText(String text) throws Exception{
-        byte[] data = encrypt(this.m_publickey, text.getBytes("UTF-8"));
-        String encoded = android.util.Base64.encodeToString(data, android.util.Base64.NO_WRAP);
-        return encoded;
-    }
-
-    String decryptText(String text) throws Exception{
-        byte[] decoded = android.util.Base64.decode(text, android.util.Base64.NO_WRAP);
-        byte[] data = decrypt(this.m_privatekey, decoded);
-        String s = new String(data, StandardCharsets.UTF_8);
-        return s;
-    }
-
-    private static byte[] encrypt(byte[] public_key, byte[] input_data) throws Exception{
-        PublicKey key = KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(public_key));
-        Cipher cipher = Cipher.getInstance("RSA");
-        cipher.init(Cipher.ENCRYPT_MODE, key);
-        return cipher.doFinal(input_data);
-    }
-
-    private static byte[] decrypt(byte[] private_key, byte[] input_data) throws Exception {
-        PrivateKey key = KeyFactory.getInstance("RSA").generatePrivate(new PKCS8EncodedKeySpec(private_key));
-        Cipher cipher = Cipher.getInstance("RSA");
-        cipher.init(Cipher.DECRYPT_MODE, key);
-        return cipher.doFinal(input_data);
-    }
-
-    private void log(final String message){
-        if (Looper.getMainLooper().isCurrentThread()) {
-            TextView tv = this.findViewById(R.id.textview);
-            String s = tv.getText() + "\n" + message;
-            tv.setText(s);
+/*
+        ListLabelsResponse list_response = service.users().labels().list(user).execute();
+        List<Label> lables = list_response.getLabels();
+        if (lables.isEmpty()){
+            log("Empty labels");
         }
         else{
-            this.runOnUiThread(new Runnable() {
-                @Override
-                public void run() {
-                    log(message);
-                }
-            });
+            for (Label label : lables){
+                log("label: " + label);
+            }
+        }*/
+        List<String> subjects = new ArrayList<>();
+        List<Message> messages = messages_response.getMessages();
+        for (Message message : messages){
+            MessagePart mp = message.getPayload();
+            List<MessagePartHeader> mphs = mp.getHeaders();
+            for (MessagePartHeader mph : mphs) {
+                subjects.add(mph.toString());
+            }
         }
+
+        RecyclerView rv = this.findViewById(R.id.activitymain_recyclerview_messages);
+        rv.setLayoutManager(new LinearLayoutManager(this));
+        this.m_adapater = new RecyclerViewAdapterMessagesRow(this, subjects);
+        this.m_adapater.setClickListener(new RecyclerViewAdapterMessagesRow.ItemClickListener() {
+            @Override
+            public void onItemClick(View view, int position) {
+
+            }
+        });
+        rv.setAdapter(this.m_adapater);
     }
 
 
 
-    private class MakeRequestTask extends AsyncTask {
-        private com.google.api.services.gmail.Gmail mService = null;
-        private Exception mLastError = null;
-        private GoogleAccountCredential credential;
-        public MakeRequestTask(GoogleAccountCredential credential) {
-            this.credential = credential;
-            HttpTransport transport = AndroidHttp.newCompatibleTransport();
-            JsonFactory jsonFactory = JacksonFactory.getDefaultInstance();
-            mService = new com.google.api.services.gmail.Gmail.Builder(
-                    transport, jsonFactory, credential)
-                    .setApplicationName(getResources().getString(R.string.app_name))
-                    .build();
-        }
-
-
-
-        private String getDataFromApi() throws IOException {
-            // getting Values for to Address, from Address, Subject and Body
-            String user = "me";
-            String to = "djsteffey@gmail.com";
-            String from = credential.getSelectedAccountName();
-            String subject = "test";
-            String body = "test from android";
-            MimeMessage mimeMessage;
-            String response = "";
-            try {
-                mimeMessage = createEmail(to, from, subject, body);
-                response = sendMessage(mService, user, mimeMessage);
-            } catch (MessagingException e) {
-                e.printStackTrace();
-            }
-            return response;
-        }
-
-        // Method to send email
-        private String sendMessage(Gmail service,
-                                   String userId,
-                                   MimeMessage email)
-                throws MessagingException, IOException {
-            Message message = createMessageWithEmail(email);
-            // GMail's official method to send email with oauth2.0
-            message = service.users().messages().send(userId, message).execute();
-
-            System.out.println("Message id: " + message.getId());
-            System.out.println(message.toPrettyString());
-            return message.getId();
-        }
-
-        // Method to create email Params
-        private MimeMessage createEmail(String to,
-                                        String from,
-                                        String subject,
-                                        String bodyText) throws MessagingException {
-            Properties props = new Properties();
-            Session session = Session.getDefaultInstance(props, null);
-
-            MimeMessage email = new MimeMessage(session);
-            InternetAddress tAddress = new InternetAddress(to);
-            InternetAddress fAddress = new InternetAddress(from);
-
-            email.setFrom(fAddress);
-            email.addRecipient(javax.mail.Message.RecipientType.TO, tAddress);
-            email.setSubject(subject);
-
-            // Create Multipart object and add MimeBodyPart objects to this object
-            Multipart multipart = new MimeMultipart();
-
-            // Changed for adding attachment and text
-            // This line is used for sending only text messages through mail
-            // email.setText(bodyText);
-
-            BodyPart textBody = new MimeBodyPart();
-            textBody.setText(bodyText);
-            multipart.addBodyPart(textBody);
-
-            // Set the multipart object to the message object
-            email.setContent(multipart);
-            return email;
-        }
-
-        private Message createMessageWithEmail(MimeMessage email)
-                throws MessagingException, IOException {
-            ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-            email.writeTo(bytes);
-            String encodedEmail = Base64.encodeBase64URLSafeString(bytes.toByteArray());
-            Message message = new Message();
-            message.setRaw(encodedEmail);
-            return message;
-        }
-
-        @Override
-        protected Object doInBackground(Object[] objects) {
-            try {
-                return getDataFromApi();
-            } catch (Exception e) {
-                mLastError = e;
-                cancel(true);
-                return null;
-            }
-        }
-
-        @Override
-        protected void onPreExecute() {
-
-        }
-
-        @Override
-        protected void onCancelled() {
-
-        }
+    private void log(String msg){
+        Log.d("SecureMail", msg);
     }
+
 }

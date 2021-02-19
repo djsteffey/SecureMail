@@ -6,32 +6,32 @@
     android:layout_height="match_parent"
     tools:context=".MainActivity">
 
-    <TextView
-        android:id="@+id/textview"
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/activitymain_recyclerview_messages"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Hello World"
-        app:layout_constraintBottom_toTopOf="@+id/button_send"
-        app:layout_constraintTop_toTopOf="parent"
-        android:scrollbars="vertical"
-        />
+        app:layout_constraintBottom_toTopOf="@+id/activitymain_button_send"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
 
     <Button
-        android:id="@+id/button_send"
+        android:id="@+id/activitymain_button_send"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="Send"
         app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toStartOf="@+id/button_read"
+        app:layout_constraintEnd_toStartOf="@+id/activitymain_button_read"
         app:layout_constraintStart_toStartOf="parent" />
 
     <Button
-        android:id="@+id/button_read"
+        android:id="@+id/activitymain_button_read"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="Read"
         app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintStart_toEndOf="@+id/button_send"
+        app:layout_constraintStart_toEndOf="@+id/activitymain_button_send"
         app:layout_constraintEnd_toEndOf="parent" />
+
+
 
 </androidx.constraintlayout.widget.ConstraintLayout>
