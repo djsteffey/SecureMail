@@ -189,11 +189,14 @@ public class MainActivity extends AppCompatActivity {
         List<String> subjects = new ArrayList<>();
         List<Message> messages = messages_response.getMessages();
         for (Message message : messages){
+            GetMessageResponse get_response = service.users().messages().get(user, message.getId()).execute();
+
+            /*
             MessagePart mp = message.getPayload();
             List<MessagePartHeader> mphs = mp.getHeaders();
             for (MessagePartHeader mph : mphs) {
                 subjects.add(mph.toString());
-            }
+            }*/
         }
 
         RecyclerView rv = this.findViewById(R.id.activitymain_recyclerview_messages);

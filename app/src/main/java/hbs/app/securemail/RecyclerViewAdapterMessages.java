@@ -9,7 +9,7 @@ import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 import java.util.List;
 
-public class RecyclerViewAdapterMessagesRow extends RecyclerView.Adapter<RecyclerViewAdapterMessagesRow.ViewHolder> {
+public class RecyclerViewAdapterMessages extends RecyclerView.Adapter<RecyclerViewAdapterMessages.ViewHolder> {
     // listener
     public interface ItemClickListener{
         void onItemClick(View view, int position);
@@ -21,20 +21,20 @@ public class RecyclerViewAdapterMessagesRow extends RecyclerView.Adapter<Recycle
     private ItemClickListener m_item_click_listener;
 
     // methods
-    public RecyclerViewAdapterMessagesRow(Context context, List<String> data){
+    public RecyclerViewAdapterMessages(Context context, List<String> data){
         this.m_inflater = LayoutInflater.from(context);
         this.m_data = data;
     }
 
     @NonNull
     @Override
-    public RecyclerViewAdapterMessagesRow.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+    public RecyclerViewAdapterMessages.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
         View view = this.m_inflater.inflate(R.layout.recyclerview_messages_row, parent, false);
         return new ViewHolder(view);
     }
 
     @Override
-    public void onBindViewHolder(@NonNull RecyclerViewAdapterMessagesRow.ViewHolder holder, int position) {
+    public void onBindViewHolder(@NonNull RecyclerViewAdapterMessages.ViewHolder holder, int position) {
         String s = this.m_data.get(position);
         holder.setSubject(s);
     }
